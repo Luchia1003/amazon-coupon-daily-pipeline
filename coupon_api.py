@@ -9,7 +9,12 @@ CLIENT_ID = "LegacyCouponsUI"
 
 
 def _get(session: requests.Session, url: str, params: dict = None) -> dict:
-    resp = session.get(url, params=params, timeout=20)
+    headers = {
+        "Referer": f"{SELLER_CENTRAL}/coupons",
+        "X-Requested-With": "XMLHttpRequest",
+        "Accept": "application/json, text/plain, */*",
+    }
+    resp = session.get(url, params=params, headers=headers, timeout=20)
     resp.raise_for_status()
     return resp.json()
 
@@ -51,8 +56,19 @@ def fetch_all_coupons(session: requests.Session) -> list[dict]:
             logger.error(f"Failed to fetch coupon list (skip={skip}): {e}")
             break
 
-        coupons = data.get("promotionDetailsList") or []
+        # Log top-level keys so we can see the real response structure
+        logger.info(f"Response keys: {list(data.keys()) if isinstance(data, dict) else type(data)}")
+
+        coupons = (
+            data.get("promotionDetailsList")
+            or data.get("coupons")
+            or data.get("promotions")
+            or data.get("items")
+            or data.get("data")
+            or (data if isinstance(data, list) else [])
+        )
         if not coupons:
+            logger.warning(f"No coupons found in response. Full response: {str(data)[:500]}")
             break
 
         all_coupons.extend(coupons)
