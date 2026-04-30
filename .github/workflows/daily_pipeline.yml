@@ -32,18 +32,18 @@ jobs:
           path: session/
           key: seller-session-${{ runner.os }}
 
+      - name: Write RSA private key from secret
+        run: |
+          echo "${{ secrets.SNOWFLAKE_PRIVATE_KEY }}" > /tmp/rsa_private_key.pem
+
       - name: Run pipeline
         env:
           AMAZON_EMAIL: ${{ secrets.AMAZON_EMAIL }}
           AMAZON_PASSWORD: ${{ secrets.AMAZON_PASSWORD }}
           AMAZON_SELLER_ID: ${{ secrets.AMAZON_SELLER_ID }}
           AMAZON_MARKETPLACE_ID: ${{ secrets.AMAZON_MARKETPLACE_ID }}
-          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
-          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
-          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
-          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
-          SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
-          SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+          AMAZON_TOTP_SECRET: ${{ secrets.AMAZON_TOTP_SECRET }}
+          SNOWFLAKE_PRIVATE_KEY_PATH: /tmp/rsa_private_key.pem
         run: python main.py
 
       - name: Save updated session cache

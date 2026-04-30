@@ -3,6 +3,8 @@ import logging
 import pandas as pd
 import snowflake.connector
 from snowflake.connector.pandas_tools import write_pandas
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import serialization
 
 logger = logging.getLogger(__name__)
 
@@ -80,15 +82,35 @@ CREATE TABLE IF NOT EXISTS {TARGET_SCHEMA}.{TARGET_TABLE} (
 """
 
 
+def _load_private_key() -> bytes:
+    """Load RSA private key and return DER-encoded bytes for Snowflake."""
+    key_path = os.environ.get("SNOWFLAKE_PRIVATE_KEY_PATH", "/Users/luchia/rsa_private_key.pem")
+    key_passphrase = os.environ.get("SNOWFLAKE_PRIVATE_KEY_PASSPHRASE")
+
+    with open(key_path, "rb") as f:
+        private_key_pem = f.read()
+
+    p_key = serialization.load_pem_private_key(
+        private_key_pem,
+        password=key_passphrase.encode() if key_passphrase else None,
+        backend=default_backend(),
+    )
+    return p_key.private_bytes(
+        encoding=serialization.Encoding.DER,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+
+
 def _get_connection() -> snowflake.connector.SnowflakeConnection:
     return snowflake.connector.connect(
-        account=os.environ["SNOWFLAKE_ACCOUNT"],
-        user=os.environ["SNOWFLAKE_USER"],
-        password=os.environ["SNOWFLAKE_PASSWORD"],
-        warehouse=os.environ["SNOWFLAKE_WAREHOUSE"],
-        database=os.environ["SNOWFLAKE_DATABASE"],
+        user="LUCHIACHANG",
+        account="RRCWSFA-BSB89302",
+        warehouse="COMPUTE_WH",
+        database="SKU_PROFIT_PROJECT",
         schema=TARGET_SCHEMA,
-        role=os.environ.get("SNOWFLAKE_ROLE"),
+        role="ACCOUNTADMIN",
+        private_key=_load_private_key(),
     )
 
 
@@ -136,7 +158,7 @@ def load_to_snowflake(df: pd.DataFrame, load_date: str) -> int:
             df=df,
             table_name=TARGET_TABLE,
             schema=TARGET_SCHEMA,
-            database=os.environ["SNOWFLAKE_DATABASE"],
+            database="SKU_PROFIT_PROJECT",
             auto_create_table=False,
             overwrite=False,
         )

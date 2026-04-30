@@ -5,6 +5,12 @@ import logging
 from pathlib import Path
 from playwright.async_api import async_playwright, BrowserContext, Page
 
+try:
+    import pyotp
+    _PYOTP_AVAILABLE = True
+except ImportError:
+    _PYOTP_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 SESSION_DIR = Path("session")
@@ -51,8 +57,62 @@ async def _save_cookies(context: BrowserContext):
     logger.info(f"Saved {len(cookies)} cookies to {COOKIES_FILE}.")
 
 
+async def _handle_otp(page: Page):
+    """
+    Handle Amazon two-factor authentication (OTP) if triggered.
+
+    Supports two modes (checked in order):
+      1. TOTP (Authenticator App) — set AMAZON_TOTP_SECRET in env.
+         Amazon generates a fresh 6-digit code automatically via pyotp.
+         Recommended: switch your Amazon account from SMS to Authenticator App.
+      2. Static OTP — set AMAZON_OTP in env before running (manual fallback).
+
+    Also ticks "Don't require OTP on this browser" to extend trusted-device period.
+    """
+    # Detect OTP page by looking for the OTP input field
+    try:
+        await page.wait_for_selector('input#auth-mfa-otpcode, input[name="otpCode"]', timeout=8000)
+    except Exception:
+        # No OTP page appeared — 2FA not triggered this run
+        return
+
+    logger.info("OTP / 2FA page detected.")
+
+    # --- Resolve OTP code ---
+    totp_secret = os.environ.get("AMAZON_TOTP_SECRET", "").strip()
+    static_otp = os.environ.get("AMAZON_OTP", "").strip()
+
+    if totp_secret:
+        if not _PYOTP_AVAILABLE:
+            raise RuntimeError("AMAZON_TOTP_SECRET is set but pyotp is not installed. Run: pip install pyotp")
+        otp_code = pyotp.TOTP(totp_secret).now()
+        logger.info("Generated TOTP code via AMAZON_TOTP_SECRET.")
+    elif static_otp:
+        otp_code = static_otp
+        logger.info("Using static OTP from AMAZON_OTP env var.")
+    else:
+        raise RuntimeError(
+            "Amazon requires OTP but neither AMAZON_TOTP_SECRET nor AMAZON_OTP is set.\n"
+            "  Recommended fix: switch your Amazon account from SMS to Authenticator App,\n"
+            "  copy the setup key, and set AMAZON_TOTP_SECRET=<key> in your .env / GitHub Secrets."
+        )
+
+    # Fill OTP code
+    await page.fill('input#auth-mfa-otpcode, input[name="otpCode"]', otp_code)
+
+    # Check "trust this device" to avoid repeated OTP prompts (~30 days)
+    remember_box = page.locator('input#auth-mfa-remember-device, input[name="rememberDevice"]')
+    if await remember_box.count() > 0:
+        await remember_box.check()
+        logger.info("Checked 'remember this device'.")
+
+    submit_btn = page.locator('input#auth-signin-button, input[type="submit"]').first
+    await submit_btn.click()
+    logger.info("OTP submitted.")
+
+
 async def _do_login(page: Page):
-    """Perform full Seller Central login with email + password."""
+    """Perform full Seller Central login with email + password, handling OTP if required."""
     email = os.environ["AMAZON_EMAIL"]
     password = os.environ["AMAZON_PASSWORD"]
 
@@ -72,6 +132,9 @@ async def _do_login(page: Page):
 
     sign_in_btn = page.locator('input#signInSubmit, input[type="submit"]').first
     await sign_in_btn.click()
+
+    # Handle OTP / 2FA if Amazon triggers it
+    await _handle_otp(page)
 
     # Wait for redirect to Seller Central home
     await page.wait_for_url("**/sellercentral.amazon.com/**", timeout=30000)
