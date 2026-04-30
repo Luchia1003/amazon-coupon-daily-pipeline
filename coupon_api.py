@@ -60,12 +60,6 @@ def fetch_all_coupons(session: requests.Session) -> list[dict]:
         if not coupons:
             break
 
-        # Log full first coupon to discover all fields (especially couponFee)
-        if not all_coupons:
-            first = coupons[0]
-            logger.info(f"First coupon raw fields: {list(first.keys())}")
-            for k, v in first.items():
-                logger.info(f"  [{k}] = {v}")
 
         all_coupons.extend(coupons)
         logger.info(f"  Got {len(coupons)} coupons (total so far: {len(all_coupons)})")
@@ -122,34 +116,26 @@ def parse_coupon_summary(raw: dict) -> dict:
     reraise=True,
 )
 def fetch_coupon_detail(session: requests.Session, promotion_id: str) -> dict:
-    # Try path-parameter style first, then query-parameter style
-    try:
-        return _get(
-            session,
-            f"{SELLER_CENTRAL}/coupons/api/couponPromotion/{promotion_id}",
-            params={"clientId": CLIENT_ID},
-        )
-    except Exception:
-        return _get(
-            session,
-            f"{SELLER_CENTRAL}/coupons/api/getCouponPromotion",
-            params={"promotionId": promotion_id, "clientId": CLIENT_ID},
-        )
+    return _get(
+        session,
+        f"{SELLER_CENTRAL}/coupons/api/couponPromotion",
+        params={"promotionId": promotion_id, "clientId": CLIENT_ID},
+    )
 
 
 def parse_coupon_detail(raw: dict) -> dict:
-    coupon = raw.get("promotionDetail") or raw.get("coupon") or raw.get("data") or raw
+    fee = raw.get("couponFee") or {}
+    fee_preview = fee.get("feePreview") or {}
     return {
-        "PRODUCT_SELECTION_ID": (
-            coupon.get("productSelectionId")
-            or coupon.get("productSelection", {}).get("id")
-        ),
-        "PARTICIPATION_FEE": coupon.get("participationFee"),
-        "PERFORMANCE_FEE":   coupon.get("performanceFee"),
-        "FEE_CAP":           coupon.get("feeCap"),
-        "FEE_CHARGED":       coupon.get("feeCharged"),
-        "CURRENCY_CODE":     coupon.get("currencyCode") or coupon.get("currency"),
-        "ASIN_COUNT":        coupon.get("asinCount") or coupon.get("productCount"),
+        "PRODUCT_SELECTION_ID": raw.get("productSelectionId"),
+        "CURRENCY_CODE":        raw.get("currencyCode"),
+        "PARTICIPATION_FEE":    fee_preview.get("participationFee"),
+        "PERFORMANCE_FEE":      fee_preview.get("performanceFee"),
+        "FEE_CAP":              fee.get("feeCap"),
+        "FEE_CHARGED":          fee.get("feeCharged"),
+        # Detail has more precise timestamps than list
+        "START_DATE":           raw.get("startDateTime") or raw.get("startDate"),
+        "END_DATE":             raw.get("endDateTime") or raw.get("endDate"),
     }
 
 
@@ -180,9 +166,6 @@ def fetch_products(session: requests.Session, product_selection_id: str) -> list
         or response.get("items")
         or (response if isinstance(response, list) else [])
     )
-    # Log first product structure on first call for visibility
-    if products:
-        logger.info(f"First product fields: {list(products[0].keys())}")
     return [_parse_product(p) for p in products]
 
 

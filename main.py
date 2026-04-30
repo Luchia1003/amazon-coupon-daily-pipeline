@@ -112,10 +112,11 @@ def run_pipeline():
                     skus = [None]
 
             # Step 6 — One row per (PROMOTION_ID, ASIN, SKU)
+            # summary provides base fields; detail overrides START_DATE/END_DATE/fees
             for sku in skus:
                 row = {
                     **summary,
-                    **detail,
+                    **detail,       # detail fields override summary where keys overlap
                     "LOAD_DATE": load_date,
                     "ASIN": asin,
                     "SKU": sku,
