@@ -146,7 +146,21 @@ def load_to_snowflake(df: pd.DataFrame, load_date: str) -> int:
     for col in COLUMN_ORDER:
         if col not in df.columns:
             df[col] = None
-    df = df[COLUMN_ORDER]
+    df = df[COLUMN_ORDER].copy()
+
+    # Coerce all NUMBER columns — any dict/list that snuck in becomes NaN
+    NUMBER_COLS = [
+        "ASIN_COUNT", "INVENTORY", "PRICE", "BUDGET", "DISCOUNT_VALUE",
+        "BUDGET_SPENT", "BUDGET_UTILIZATION", "CLIP_COUNT", "REDEMPTION_COUNT",
+        "SALES", "PARTICIPATION_FEE", "PERFORMANCE_FEE", "FEE_CAP", "FEE_CHARGED",
+    ]
+    for col in NUMBER_COLS:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    # Strip timezone from datetime columns (Snowflake TIMESTAMP_NTZ expects tz-naive)
+    for col in ("START_DATE", "END_DATE"):
+        if col in df.columns:
+            df[col] = pd.to_datetime(df[col], errors="coerce", utc=True).dt.tz_localize(None)
 
     conn = _get_connection()
     try:
@@ -161,6 +175,7 @@ def load_to_snowflake(df: pd.DataFrame, load_date: str) -> int:
             database=os.environ["SNOWFLAKE_DATABASE"],
             auto_create_table=False,
             overwrite=False,
+            use_logical_type=True,
         )
 
         if success:
