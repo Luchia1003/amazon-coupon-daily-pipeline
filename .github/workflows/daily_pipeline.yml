@@ -24,7 +24,22 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
-          playwright install chromium --with-deps
+
+      - name: Install Playwright system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libasound2t64 libatk-bridge2.0-0 libatk1.0-0 libcairo2 \
+            libcups2 libdbus-1-3 libexpat1 libfontconfig1 libgbm1 \
+            libglib2.0-0 libgtk-3-0 libnspr4 libnss3 \
+            libpango-1.0-0 libpangocairo-1.0-0 \
+            libx11-6 libx11-xcb1 libxcb1 libxcomposite1 libxcursor1 \
+            libxdamage1 libxext6 libxfixes3 libxi6 libxrandr2 \
+            libxrender1 libxss1 libxtst6 libxkbcommon0 libdrm2 \
+            fonts-liberation ca-certificates xdg-utils
+
+      - name: Install Playwright browser
+        run: playwright install chromium
 
       - name: Restore Playwright session cache
         uses: actions/cache@v4
