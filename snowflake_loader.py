@@ -104,12 +104,12 @@ def _load_private_key() -> bytes:
 
 def _get_connection() -> snowflake.connector.SnowflakeConnection:
     return snowflake.connector.connect(
-        user="LUCHIACHANG",
-        account="RRCWSFA-BSB89302",
-        warehouse="COMPUTE_WH",
-        database="SKU_PROFIT_PROJECT",
+        user=os.environ["SNOWFLAKE_USER"],
+        account=os.environ["SNOWFLAKE_ACCOUNT"],
+        warehouse=os.environ["SNOWFLAKE_WAREHOUSE"],
+        database=os.environ["SNOWFLAKE_DATABASE"],
         schema=TARGET_SCHEMA,
-        role="ACCOUNTADMIN",
+        role=os.environ["SNOWFLAKE_ROLE"],
         private_key=_load_private_key(),
     )
 
@@ -158,7 +158,7 @@ def load_to_snowflake(df: pd.DataFrame, load_date: str) -> int:
             df=df,
             table_name=TARGET_TABLE,
             schema=TARGET_SCHEMA,
-            database="SKU_PROFIT_PROJECT",
+            database=os.environ["SNOWFLAKE_DATABASE"],
             auto_create_table=False,
             overwrite=False,
         )

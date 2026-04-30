@@ -43,6 +43,11 @@ jobs:
           AMAZON_SELLER_ID: ${{ secrets.AMAZON_SELLER_ID }}
           AMAZON_MARKETPLACE_ID: ${{ secrets.AMAZON_MARKETPLACE_ID }}
           AMAZON_TOTP_SECRET: ${{ secrets.AMAZON_TOTP_SECRET }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+          SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+          SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
           SNOWFLAKE_PRIVATE_KEY_PATH: /tmp/rsa_private_key.pem
         run: python main.py
 
