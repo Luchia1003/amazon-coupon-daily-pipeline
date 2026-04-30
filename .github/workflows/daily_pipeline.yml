@@ -38,11 +38,9 @@ jobs:
 
       - name: Run pipeline
         env:
-          AMAZON_EMAIL: ${{ secrets.AMAZON_EMAIL }}
-          AMAZON_PASSWORD: ${{ secrets.AMAZON_PASSWORD }}
+          AMAZON_SESSION_COOKIES: ${{ secrets.AMAZON_SESSION_COOKIES }}
           AMAZON_SELLER_ID: ${{ secrets.AMAZON_SELLER_ID }}
           AMAZON_MARKETPLACE_ID: ${{ secrets.AMAZON_MARKETPLACE_ID }}
-          AMAZON_TOTP_SECRET: ${{ secrets.AMAZON_TOTP_SECRET }}
           SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
           SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
           SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
