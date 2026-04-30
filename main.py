@@ -78,8 +78,9 @@ def run_pipeline():
                 detail = parse_coupon_detail(raw_detail)
                 product_selection_id = detail.get("PRODUCT_SELECTION_ID")
             except Exception as e:
-                logger.error(f"[{promotion_id}] Detail fetch failed: {e} — skipping.")
-                continue
+                logger.warning(f"[{promotion_id}] Detail fetch failed: {e} — will try promotion_id as productSelectionId.")
+                # Fall back: use the obfuscatedPromotionId as productSelectionId (may work)
+                product_selection_id = promotion_id
         if not product_selection_id:
             logger.warning(f"[{promotion_id}] No PRODUCT_SELECTION_ID — creating null-product row.")
             row = {**summary, **detail, "ASIN": None, "SKU": None,

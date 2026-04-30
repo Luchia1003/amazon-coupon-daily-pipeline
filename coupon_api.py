@@ -60,6 +60,11 @@ def fetch_all_coupons(session: requests.Session) -> list[dict]:
         if not coupons:
             break
 
+        # Log all fields of the first coupon on the first page to discover structure
+        if not all_coupons:
+            logger.info(f"First coupon raw fields: {list(coupons[0].keys())}")
+            logger.info(f"First coupon sample: {str(coupons[0])[:800]}")
+
         all_coupons.extend(coupons)
         logger.info(f"  Got {len(coupons)} coupons (total so far: {len(all_coupons)})")
 
