@@ -60,10 +60,12 @@ def fetch_all_coupons(session: requests.Session) -> list[dict]:
         if not coupons:
             break
 
-        # Log all fields of the first coupon on the first page to discover structure
+        # Log full first coupon to discover all fields (especially couponFee)
         if not all_coupons:
-            logger.info(f"First coupon raw fields: {list(coupons[0].keys())}")
-            logger.info(f"First coupon sample: {str(coupons[0])[:800]}")
+            first = coupons[0]
+            logger.info(f"First coupon raw fields: {list(first.keys())}")
+            for k, v in first.items():
+                logger.info(f"  [{k}] = {v}")
 
         all_coupons.extend(coupons)
         logger.info(f"  Got {len(coupons)} coupons (total so far: {len(all_coupons)})")
@@ -120,11 +122,19 @@ def parse_coupon_summary(raw: dict) -> dict:
     reraise=True,
 )
 def fetch_coupon_detail(session: requests.Session, promotion_id: str) -> dict:
-    return _get(
-        session,
-        f"{SELLER_CENTRAL}/coupons/api/getCouponPromotion",
-        params={"promotionId": promotion_id, "clientId": CLIENT_ID},
-    )
+    # Try path-parameter style first, then query-parameter style
+    try:
+        return _get(
+            session,
+            f"{SELLER_CENTRAL}/coupons/api/couponPromotion/{promotion_id}",
+            params={"clientId": CLIENT_ID},
+        )
+    except Exception:
+        return _get(
+            session,
+            f"{SELLER_CENTRAL}/coupons/api/getCouponPromotion",
+            params={"promotionId": promotion_id, "clientId": CLIENT_ID},
+        )
 
 
 def parse_coupon_detail(raw: dict) -> dict:
@@ -165,10 +175,14 @@ def fetch_products(session: requests.Session, product_selection_id: str) -> list
         },
     )
     products = (
-        response.get("products")
+        response.get("couponPromotionProducts")
+        or response.get("products")
         or response.get("items")
         or (response if isinstance(response, list) else [])
     )
+    # Log first product structure on first call for visibility
+    if products:
+        logger.info(f"First product fields: {list(products[0].keys())}")
     return [_parse_product(p) for p in products]
 
 
@@ -178,7 +192,7 @@ def _parse_product(raw: dict) -> dict:
         "SKU_FROM_PRODUCT_API": raw.get("sku") or raw.get("merchantSku"),
         "TITLE":              raw.get("title") or raw.get("name"),
         "INVENTORY":          raw.get("inventory") or raw.get("quantity"),
-        "PRICE":              raw.get("price") or raw.get("listPrice"),
+        "PRICE":              raw.get("minPrice") or raw.get("maxPrice") or raw.get("price"),
     }
 
 
