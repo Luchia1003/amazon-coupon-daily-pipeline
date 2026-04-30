@@ -56,25 +56,14 @@ def fetch_all_coupons(session: requests.Session) -> list[dict]:
             logger.error(f"Failed to fetch coupon list (skip={skip}): {e}")
             break
 
-        # Log top-level keys so we can see the real response structure
-        logger.info(f"Response keys: {list(data.keys()) if isinstance(data, dict) else type(data)}")
-
-        coupons = (
-            data.get("promotionDetailsList")
-            or data.get("coupons")
-            or data.get("promotions")
-            or data.get("items")
-            or data.get("data")
-            or (data if isinstance(data, list) else [])
-        )
+        coupons = data.get("promotionSearchResultList") or []
         if not coupons:
-            logger.warning(f"No coupons found in response. Full response: {str(data)[:500]}")
             break
 
         all_coupons.extend(coupons)
         logger.info(f"  Got {len(coupons)} coupons (total so far: {len(all_coupons)})")
 
-        total = data.get("totalCount") or data.get("total") or 0
+        total = data.get("promotionTotalCount") or 0
         if len(all_coupons) >= total or len(coupons) < page_size:
             break
 
@@ -86,28 +75,31 @@ def fetch_all_coupons(session: requests.Session) -> list[dict]:
 
 def parse_coupon_summary(raw: dict) -> dict:
     """Map list API fields → our standard column names."""
+    metrics = raw.get("couponMetrics") or {}
     return {
-        "PROMOTION_ID":      raw.get("promotionId"),
-        "TITLE":             raw.get("name") or raw.get("title"),
-        "STATUS":            raw.get("status"),
-        "PSSS_STATUS":       raw.get("psssStatus") or raw.get("approvalStatus"),
-        "NEEDS_ATTENTION":   bool(raw.get("needsAttention", False)),
-        "START_DATE":        raw.get("startDate"),
-        "END_DATE":          raw.get("endDate"),
-        "BUDGET":            raw.get("budget") or raw.get("totalBudget"),
-        "BUDGET_TYPE":       raw.get("budgetType"),
-        "BUDGET_STATUS":     raw.get("budgetStatus"),
-        "DISCOUNT_TYPE":     raw.get("discountType"),
-        "DISCOUNT_VALUE":    raw.get("discountValue") or raw.get("discount"),
-        "CUSTOMER_SEGMENT":  raw.get("customerSegment"),
-        "COUPON_TYPE":       raw.get("couponType"),
-        "ONCE_PER_CUSTOMER": bool(raw.get("oncePerCustomer", False)),
-        "BUDGET_SPENT":      raw.get("budgetSpent") or raw.get("spentBudget"),
-        "BUDGET_UTILIZATION":raw.get("budgetUtilization"),
-        "CLIP_COUNT":        raw.get("clipCount") or raw.get("clippedCount"),
-        "REDEMPTION_COUNT":  raw.get("redemptionCount") or raw.get("redeemedCount"),
-        "SALES":             raw.get("sales") or raw.get("totalSales"),
-        # productSelectionId may already be here — saves an extra detail call
+        "PROMOTION_ID":       raw.get("obfuscatedPromotionId") or raw.get("promotionId"),
+        "TITLE":              raw.get("title") or raw.get("name"),
+        "STATUS":             raw.get("status"),
+        "PSSS_STATUS":        raw.get("psssStatus") or raw.get("approvalStatus"),
+        "NEEDS_ATTENTION":    bool(raw.get("needsAttention", False)),
+        "START_DATE":         raw.get("startDate"),
+        "END_DATE":           raw.get("endDate"),
+        "BUDGET":             raw.get("budget") or raw.get("totalBudget"),
+        "BUDGET_TYPE":        raw.get("budgetType"),
+        "BUDGET_STATUS":      raw.get("budgetStatus"),
+        "DISCOUNT_TYPE":      raw.get("discountType"),
+        "DISCOUNT_VALUE":     raw.get("discountValue") or raw.get("discount"),
+        "CUSTOMER_SEGMENT":   raw.get("customerSegment"),
+        "COUPON_TYPE":        raw.get("couponType"),
+        "ONCE_PER_CUSTOMER":  bool(raw.get("oncePerCustomer", False)),
+        "ASIN_COUNT":         raw.get("asinCount"),
+        # couponMetrics is a nested object
+        "BUDGET_SPENT":       metrics.get("budgetSpent"),
+        "BUDGET_UTILIZATION": metrics.get("budgetUtilization"),
+        "CLIP_COUNT":         metrics.get("clipCount"),
+        "REDEMPTION_COUNT":   metrics.get("redemptionCount"),
+        "SALES":              metrics.get("sales") or metrics.get("totalSales"),
+        # productSelectionId may already be in list response
         "_PRODUCT_SELECTION_ID": raw.get("productSelectionId"),
     }
 
