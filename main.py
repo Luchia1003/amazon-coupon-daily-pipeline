@@ -69,15 +69,17 @@ def run_pipeline():
             logger.warning("Skipping coupon row with no PROMOTION_ID.")
             continue
 
-        # Step 3 — Coupon detail
-        try:
-            raw_detail = fetch_coupon_detail(session, promotion_id)
-            detail = parse_coupon_detail(raw_detail)
-        except Exception as e:
-            logger.error(f"[{promotion_id}] Detail fetch failed: {e} — skipping.")
-            continue
-
-        product_selection_id = detail.get("PRODUCT_SELECTION_ID")
+        # Step 3 — Get productSelectionId (from list response if available, else call detail API)
+        product_selection_id = summary.pop("_PRODUCT_SELECTION_ID", None)
+        detail = {}
+        if not product_selection_id:
+            try:
+                raw_detail = fetch_coupon_detail(session, promotion_id)
+                detail = parse_coupon_detail(raw_detail)
+                product_selection_id = detail.get("PRODUCT_SELECTION_ID")
+            except Exception as e:
+                logger.error(f"[{promotion_id}] Detail fetch failed: {e} — skipping.")
+                continue
         if not product_selection_id:
             logger.warning(f"[{promotion_id}] No PRODUCT_SELECTION_ID — creating null-product row.")
             row = {**summary, **detail, "ASIN": None, "SKU": None,
