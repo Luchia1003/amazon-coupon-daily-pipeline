@@ -1,0 +1,54 @@
+name: Amazon Coupon Daily Pipeline
+
+on:
+  schedule:
+    # 08:15 AM Pacific Time = 15:15 UTC (PDT) / 16:15 UTC (PST)
+    - cron: "15 15 * * *"
+  workflow_dispatch:  # allow manual trigger
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          playwright install chromium --with-deps
+
+      - name: Restore Playwright session cache
+        uses: actions/cache@v4
+        with:
+          path: session/
+          key: seller-session-${{ runner.os }}
+
+      - name: Run pipeline
+        env:
+          AMAZON_EMAIL: ${{ secrets.AMAZON_EMAIL }}
+          AMAZON_PASSWORD: ${{ secrets.AMAZON_PASSWORD }}
+          AMAZON_SELLER_ID: ${{ secrets.AMAZON_SELLER_ID }}
+          AMAZON_MARKETPLACE_ID: ${{ secrets.AMAZON_MARKETPLACE_ID }}
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+          SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+          SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+        run: python main.py
+
+      - name: Save updated session cache
+        if: always()
+        uses: actions/cache@v4
+        with:
+          path: session/
+          key: seller-session-${{ runner.os }}
