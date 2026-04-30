@@ -1,8 +1,7 @@
-playwright==1.44.0
+requests==2.32.3
 snowflake-connector-python==3.10.1
 pandas==2.2.2
 python-dotenv==1.0.1
-requests==2.32.3
 tenacity==8.3.0
 pyotp==2.9.0
 cryptography==42.0.8

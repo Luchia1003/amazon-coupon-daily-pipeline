@@ -10,20 +10,22 @@ jobs:
   run-pipeline:
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    container:
-      image: mcr.microsoft.com/playwright/python:v1.44.0-jammy
-      # Official Playwright image — all browser deps pre-installed, no apt-get needed
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Python dependencies
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Restore Playwright session cache
+      - name: Restore session cache
         uses: actions/cache@v4
         with:
           path: session/

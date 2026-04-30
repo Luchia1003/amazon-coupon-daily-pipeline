@@ -1,8 +1,7 @@
 import os
 import logging
-from typing import Optional
+import requests
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
-from playwright.async_api import Page
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +16,12 @@ def _marketplace_id() -> str:
     return os.environ.get("AMAZON_MARKETPLACE_ID", "ATVPDKIKX0DER")
 
 
+def _get(session: requests.Session, url: str) -> dict:
+    resp = session.get(url, timeout=20)
+    resp.raise_for_status()
+    return resp.json()
+
+
 # ---------------------------------------------------------------------------
 # Step 2 — Coupon List (paginated)
 # ---------------------------------------------------------------------------
@@ -27,11 +32,7 @@ def _marketplace_id() -> str:
     retry=retry_if_exception_type(Exception),
     reraise=True,
 )
-async def fetch_coupon_list_page(page: Page, page_index: int = 0, page_size: int = 50) -> dict:
-    """
-    Call the internal Seller Central coupon list API.
-    Returns raw JSON response for one page.
-    """
+def fetch_coupon_list_page(session: requests.Session, page_index: int = 0, page_size: int = 50) -> dict:
     url = (
         f"{SELLER_CENTRAL}/coupons/api/coupon/list"
         f"?sellerId={_seller_id()}"
@@ -41,22 +42,11 @@ async def fetch_coupon_list_page(page: Page, page_index: int = 0, page_size: int
         f"&sortBy=START_DATE"
         f"&sortOrder=DESC"
     )
-    response = await page.evaluate(
-        """async (url) => {
-            const resp = await fetch(url, {credentials: 'include'});
-            if (!resp.ok) throw new Error('HTTP ' + resp.status);
-            return await resp.json();
-        }""",
-        url,
-    )
-    return response
+    return _get(session, url)
 
 
-async def fetch_all_coupons(page: Page) -> list[dict]:
-    """
-    Paginate through the coupon list API and collect all coupon rows.
-    Returns a flat list of coupon summary dicts.
-    """
+def fetch_all_coupons(session: requests.Session) -> list[dict]:
+    """Paginate through coupon list and return all coupon rows."""
     all_coupons = []
     page_index = 0
     page_size = 50
@@ -64,7 +54,7 @@ async def fetch_all_coupons(page: Page) -> list[dict]:
     while True:
         logger.info(f"Fetching coupon list page {page_index}...")
         try:
-            data = await fetch_coupon_list_page(page, page_index=page_index, page_size=page_size)
+            data = fetch_coupon_list_page(session, page_index=page_index, page_size=page_size)
         except Exception as e:
             logger.error(f"Failed to fetch coupon list page {page_index}: {e}")
             break
@@ -74,7 +64,7 @@ async def fetch_all_coupons(page: Page) -> list[dict]:
             break
 
         all_coupons.extend(coupons)
-        logger.info(f"  Page {page_index}: {len(coupons)} coupons (total so far: {len(all_coupons)})")
+        logger.info(f"  Page {page_index}: {len(coupons)} coupons (total: {len(all_coupons)})")
 
         total = data.get("totalCount") or data.get("total") or 0
         if len(all_coupons) >= total or len(coupons) < page_size:
@@ -87,7 +77,6 @@ async def fetch_all_coupons(page: Page) -> list[dict]:
 
 
 def parse_coupon_summary(raw: dict) -> dict:
-    """Normalise a raw coupon list row into our standard field names."""
     return {
         "PROMOTION_ID": raw.get("promotionId") or raw.get("couponId") or raw.get("id"),
         "TITLE": raw.get("title") or raw.get("name"),
@@ -122,29 +111,16 @@ def parse_coupon_summary(raw: dict) -> dict:
     retry=retry_if_exception_type(Exception),
     reraise=True,
 )
-async def fetch_coupon_detail(page: Page, promotion_id: str) -> dict:
-    """
-    Fetch coupon detail for a single PROMOTION_ID.
-    Returns PRODUCT_SELECTION_ID and any extra detail fields.
-    """
+def fetch_coupon_detail(session: requests.Session, promotion_id: str) -> dict:
     url = (
         f"{SELLER_CENTRAL}/coupons/api/coupon/{promotion_id}"
         f"?sellerId={_seller_id()}"
         f"&marketplaceId={_marketplace_id()}"
     )
-    response = await page.evaluate(
-        """async (url) => {
-            const resp = await fetch(url, {credentials: 'include'});
-            if (!resp.ok) throw new Error('HTTP ' + resp.status);
-            return await resp.json();
-        }""",
-        url,
-    )
-    return response
+    return _get(session, url)
 
 
 def parse_coupon_detail(raw: dict) -> dict:
-    """Extract PRODUCT_SELECTION_ID and supplemental fields from detail response."""
     coupon = raw.get("coupon") or raw.get("data") or raw
     return {
         "PRODUCT_SELECTION_ID": (
@@ -161,7 +137,7 @@ def parse_coupon_detail(raw: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Step 4 — Product API (ASIN list per coupon)
+# Step 4 — Product API
 # ---------------------------------------------------------------------------
 
 @retry(
@@ -170,25 +146,18 @@ def parse_coupon_detail(raw: dict) -> dict:
     retry=retry_if_exception_type(Exception),
     reraise=True,
 )
-async def fetch_products(page: Page, product_selection_id: str) -> list[dict]:
-    """
-    Fetch all products for a given PRODUCT_SELECTION_ID.
-    Returns list of dicts with ASIN, TITLE, INVENTORY, PRICE.
-    """
+def fetch_products(session: requests.Session, product_selection_id: str) -> list[dict]:
     url = (
         f"{SELLER_CENTRAL}/coupons/api/product-selection/{product_selection_id}/products"
         f"?sellerId={_seller_id()}"
         f"&marketplaceId={_marketplace_id()}"
     )
-    response = await page.evaluate(
-        """async (url) => {
-            const resp = await fetch(url, {credentials: 'include'});
-            if (!resp.ok) throw new Error('HTTP ' + resp.status);
-            return await resp.json();
-        }""",
-        url,
+    response = _get(session, url)
+    products = (
+        response.get("products")
+        or response.get("items")
+        or (response if isinstance(response, list) else [])
     )
-    products = response.get("products") or response.get("items") or response if isinstance(response, list) else []
     return [_parse_product(p) for p in products]
 
 
@@ -212,54 +181,39 @@ def _parse_product(raw: dict) -> dict:
     retry=retry_if_exception_type(Exception),
     reraise=True,
 )
-async def fetch_sku_for_asin(page: Page, asin: str) -> list[str]:
+def fetch_sku_for_asin(session: requests.Session, asin: str) -> list[str]:
     """
-    Look up merchant SKU(s) for a given ASIN via the Seller Central
-    listings/inventory endpoint.
-
-    Priority:
-      1. Catalog / listing endpoint
-      2. Inventory summary endpoint
-      Falls back to [None] if nothing found.
+    Lookup merchant SKU(s) for a given ASIN.
+    Tries catalog endpoint first, then inventory summary.
+    Returns [None] if nothing found.
     """
-    # Try catalog listings endpoint first
-    skus = await _sku_from_catalog(page, asin)
+    skus = _sku_from_catalog(session, asin)
     if skus:
         return skus
 
-    # Fallback: inventory summary
-    skus = await _sku_from_inventory(page, asin)
+    skus = _sku_from_inventory(session, asin)
     if skus:
         return skus
 
     return [None]
 
 
-async def _sku_from_catalog(page: Page, asin: str) -> list[str]:
+def _sku_from_catalog(session: requests.Session, asin: str) -> list[str]:
     url = (
         f"{SELLER_CENTRAL}/inventory/api/ownedAsins/{asin}"
         f"?sellerId={_seller_id()}"
         f"&marketplaceId={_marketplace_id()}"
     )
     try:
-        data = await page.evaluate(
-            """async (url) => {
-                const resp = await fetch(url, {credentials: 'include'});
-                if (!resp.ok) return null;
-                return await resp.json();
-            }""",
-            url,
-        )
-        if not data:
-            return []
+        data = _get(session, url)
         items = data.get("listings") or data.get("items") or []
         return [i.get("sku") or i.get("merchantSku") for i in items if i.get("sku") or i.get("merchantSku")]
     except Exception as e:
-        logger.debug(f"Catalog lookup failed for {asin}: {e}")
+        logger.debug(f"Catalog SKU lookup failed for {asin}: {e}")
         return []
 
 
-async def _sku_from_inventory(page: Page, asin: str) -> list[str]:
+def _sku_from_inventory(session: requests.Session, asin: str) -> list[str]:
     url = (
         f"{SELLER_CENTRAL}/inventory/api/inventorySummaries"
         f"?sellerId={_seller_id()}"
@@ -267,16 +221,7 @@ async def _sku_from_inventory(page: Page, asin: str) -> list[str]:
         f"&asin={asin}"
     )
     try:
-        data = await page.evaluate(
-            """async (url) => {
-                const resp = await fetch(url, {credentials: 'include'});
-                if (!resp.ok) return null;
-                return await resp.json();
-            }""",
-            url,
-        )
-        if not data:
-            return []
+        data = _get(session, url)
         summaries = (
             data.get("inventorySummaries")
             or data.get("payload", {}).get("inventorySummaries")
@@ -284,5 +229,5 @@ async def _sku_from_inventory(page: Page, asin: str) -> list[str]:
         )
         return [s.get("sellerSku") or s.get("sku") for s in summaries if s.get("sellerSku") or s.get("sku")]
     except Exception as e:
-        logger.debug(f"Inventory lookup failed for {asin}: {e}")
+        logger.debug(f"Inventory SKU lookup failed for {asin}: {e}")
         return []
