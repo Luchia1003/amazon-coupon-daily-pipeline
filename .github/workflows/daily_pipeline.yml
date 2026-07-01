@@ -3,7 +3,7 @@ name: Amazon Coupon Daily Pipeline
 on:
   schedule:
     # 08:15 AM Pacific Time = 15:15 UTC (PDT) / 16:15 UTC (PST)
-    - cron: "15 15 * * *"
+    - cron: "15 08 * * *"
   workflow_dispatch:  # allow manual trigger
 
 jobs:
