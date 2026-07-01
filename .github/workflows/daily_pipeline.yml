@@ -49,19 +49,6 @@ jobs:
           SNOWFLAKE_PRIVATE_KEY_PATH: /tmp/rsa_private_key.pem
         run: python main.py
 
-      # Signal the Snowflake dashboard that coupon data has landed. The coupon
-      # tables (DAILY_ORDER/SKU_COUPON_PROFIT) read AMAZON_ORDER, so they run
-      # only after BOTH the core pipeline succeeded today AND this signal arrives.
-      - name: Signal Snowflake coupon pipeline
-        if: success()
-        env:
-          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
-          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
-          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
-          SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
-          SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
-        run: python -u notify_snowflake.py COUPON
-
       - name: Save updated session cache
         if: always()
         uses: actions/cache@v4
