@@ -24,6 +24,8 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
+          pip install playwright
+          playwright install chromium --with-deps
 
       - name: Restore session cache
         uses: actions/cache@v4
@@ -39,6 +41,9 @@ jobs:
       - name: Run pipeline
         env:
           AMAZON_SESSION_COOKIES: ${{ secrets.AMAZON_SESSION_COOKIES }}
+          AMAZON_EMAIL: ${{ secrets.AMAZON_EMAIL }}
+          AMAZON_PASSWORD: ${{ secrets.AMAZON_PASSWORD }}
+          AMAZON_TOTP_SECRET: ${{ secrets.AMAZON_TOTP_SECRET }}
           AMAZON_SELLER_ID: ${{ secrets.AMAZON_SELLER_ID }}
           AMAZON_MARKETPLACE_ID: ${{ secrets.AMAZON_MARKETPLACE_ID }}
           SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}

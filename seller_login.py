@@ -103,59 +103,6 @@ def _is_session_valid(session: requests.Session) -> bool:
             allow_redirects=True,
             timeout=15,
         )
-        # DEBUG: full redirect chain so we can see where Amazon sends us
-        for h in resp.history:
-            logger.info(f"DEBUG redirect: {h.status_code} {h.url} -> {h.headers.get('Location', '')}")
-        logger.info(f"DEBUG final: {resp.status_code} {resp.url} | body_len={len(resp.text)}")
-        title_start = resp.text.find("<title>")
-        if title_start != -1:
-            logger.info(f"DEBUG title: {resp.text[title_start:title_start + 120]!r}")
-        cookie_names = sorted(session.cookies.keys())
-        logger.info(f"DEBUG cookie names sent: {cookie_names}")
-        # DEBUG: probe the actual coupon API — /home may demand fresh MFA while APIs still work
-        try:
-            api_resp = session.get(
-                SELLER_CENTRAL_URL + "/coupons/api/getCouponPromotions",
-                params={"paginationSize": 1, "paginationSkip": 0, "clientId": "LegacyCouponsUI"},
-                headers={
-                    **HEADERS,
-                    "Referer": SELLER_CENTRAL_URL + "/coupons",
-                    "X-Requested-With": "XMLHttpRequest",
-                    "Accept": "application/json, text/plain, */*",
-                },
-                timeout=20,
-            )
-            ctype = api_resp.headers.get("Content-Type", "")
-            logger.info(
-                f"DEBUG coupon API probe: {api_resp.status_code} {api_resp.url[:120]} | "
-                f"content-type={ctype} | body[:200]={api_resp.text[:200]!r}"
-            )
-        except Exception as e:
-            logger.info(f"DEBUG coupon API probe failed: {e}")
-        # DEBUG: same cookies via curl_cffi Chrome-impersonated TLS — tests if requests' TLS fingerprint is the blocker
-        try:
-            from curl_cffi import requests as curl_requests
-
-            cf = curl_requests.Session(impersonate="chrome124")
-            for name, value in session.cookies.items():
-                cf.cookies.set(name, value, domain=".amazon.com")
-            cf_home = cf.get(SELLER_CENTRAL_URL + "/home", allow_redirects=True, timeout=20)
-            logger.info(f"DEBUG curl_cffi /home: {cf_home.status_code} {cf_home.url[:120]}")
-            cf_api = cf.get(
-                SELLER_CENTRAL_URL + "/coupons/api/getCouponPromotions",
-                params={"paginationSize": 1, "paginationSkip": 0, "clientId": "LegacyCouponsUI"},
-                headers={
-                    "Referer": SELLER_CENTRAL_URL + "/coupons",
-                    "X-Requested-With": "XMLHttpRequest",
-                    "Accept": "application/json, text/plain, */*",
-                },
-                timeout=20,
-            )
-            logger.info(
-                f"DEBUG curl_cffi API: {cf_api.status_code} | body[:200]={cf_api.text[:200]!r}"
-            )
-        except Exception as e:
-            logger.info(f"DEBUG curl_cffi probe failed: {e}")
         if "signin" in resp.url or "ap/signin" in resp.url:
             logger.warning("Session invalid — redirected to login page.")
             return False
@@ -166,6 +113,36 @@ def _is_session_valid(session: requests.Session) -> bool:
         return False
 
 
+def _login_with_browser(session: requests.Session) -> bool:
+    """
+    Fresh Playwright login (email + password + TOTP), then transfer the
+    browser's cookies into the requests session.
+
+    Needed since ~2026-07-15: Amazon rejects replayed browser cookies coming
+    from a different IP (runner gets bounced to /ap/signin with
+    max_auth_age=300), but a full login from the runner's own IP still works.
+    """
+    if not os.environ.get("AMAZON_EMAIL") or not os.environ.get("AMAZON_PASSWORD"):
+        logger.info("AMAZON_EMAIL/AMAZON_PASSWORD not set — skipping browser login.")
+        return False
+    try:
+        from browser_login import login_and_get_cookies
+
+        logger.info("Falling back to Playwright browser login...")
+        cookies, user_agent = login_and_get_cookies()
+        session.cookies.clear()
+        # Match the exact UA the session was established under
+        session.headers["User-Agent"] = user_agent
+        HEADERS["User-Agent"] = user_agent
+        for c in cookies:
+            session.cookies.set(c["name"], c["value"], domain=c.get("domain", ".amazon.com"))
+        logger.info(f"Browser login OK — {len(cookies)} cookies transferred.")
+        return True
+    except Exception as e:
+        logger.warning(f"Browser login failed: {e}")
+        return False
+
+
 def get_session() -> requests.Session:
     """
     Return an authenticated requests.Session.
@@ -173,8 +150,9 @@ def get_session() -> requests.Session:
     Priority:
       1. AMAZON_SESSION_COOKIES env var (GitHub Secret / .env)
       2. Cached cookies from disk (session/cookies.json)
+      3. Fresh Playwright browser login (AMAZON_EMAIL / AMAZON_PASSWORD / AMAZON_TOTP_SECRET)
 
-    If neither works, raises a clear error with instructions.
+    If none works, raises a clear error with instructions.
     """
     session = requests.Session()
     session.headers.update(HEADERS)
@@ -193,6 +171,13 @@ def get_session() -> requests.Session:
             logger.info("Using cached cookies from disk.")
             return session
         logger.warning("Cached cookies are expired.")
+
+    # Fallback: fresh browser login from the runner's own IP
+    if _login_with_browser(session):
+        if _is_session_valid(session):
+            _save_cookies_to_file(session)
+            return session
+        logger.warning("Browser-login cookies did not validate.")
 
     raise RuntimeError(
         "\n"
