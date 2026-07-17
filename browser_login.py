@@ -62,7 +62,9 @@ def login_and_get_cookies() -> tuple[list[dict], str]:
                 try:
                     import pyotp
 
-                    otp = pyotp.TOTP(otp_secret).now()
+                    # Amazon displays the secret in space-separated groups
+                    secret = otp_secret.replace(" ", "").replace("-", "").strip().upper()
+                    otp = pyotp.TOTP(secret).now()
                     page.locator("#auth-mfa-otpcode, input[name='otpCode']").first.fill(
                         otp, timeout=6_000
                     )
@@ -76,6 +78,7 @@ def login_and_get_cookies() -> tuple[list[dict], str]:
 
         if (
             "/ap/signin" in page.url
+            or "/ap/mfa" in page.url
             or "captcha" in page.url.lower()
             or "challenge" in page.url.lower()
         ):
