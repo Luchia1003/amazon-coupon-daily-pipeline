@@ -132,6 +132,30 @@ def _is_session_valid(session: requests.Session) -> bool:
             )
         except Exception as e:
             logger.info(f"DEBUG coupon API probe failed: {e}")
+        # DEBUG: same cookies via curl_cffi Chrome-impersonated TLS — tests if requests' TLS fingerprint is the blocker
+        try:
+            from curl_cffi import requests as curl_requests
+
+            cf = curl_requests.Session(impersonate="chrome124")
+            for name, value in session.cookies.items():
+                cf.cookies.set(name, value, domain=".amazon.com")
+            cf_home = cf.get(SELLER_CENTRAL_URL + "/home", allow_redirects=True, timeout=20)
+            logger.info(f"DEBUG curl_cffi /home: {cf_home.status_code} {cf_home.url[:120]}")
+            cf_api = cf.get(
+                SELLER_CENTRAL_URL + "/coupons/api/getCouponPromotions",
+                params={"paginationSize": 1, "paginationSkip": 0, "clientId": "LegacyCouponsUI"},
+                headers={
+                    "Referer": SELLER_CENTRAL_URL + "/coupons",
+                    "X-Requested-With": "XMLHttpRequest",
+                    "Accept": "application/json, text/plain, */*",
+                },
+                timeout=20,
+            )
+            logger.info(
+                f"DEBUG curl_cffi API: {cf_api.status_code} | body[:200]={cf_api.text[:200]!r}"
+            )
+        except Exception as e:
+            logger.info(f"DEBUG curl_cffi probe failed: {e}")
         if "signin" in resp.url or "ap/signin" in resp.url:
             logger.warning("Session invalid — redirected to login page.")
             return False
