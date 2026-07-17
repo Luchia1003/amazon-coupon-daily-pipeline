@@ -112,6 +112,26 @@ def _is_session_valid(session: requests.Session) -> bool:
             logger.info(f"DEBUG title: {resp.text[title_start:title_start + 120]!r}")
         cookie_names = sorted(session.cookies.keys())
         logger.info(f"DEBUG cookie names sent: {cookie_names}")
+        # DEBUG: probe the actual coupon API — /home may demand fresh MFA while APIs still work
+        try:
+            api_resp = session.get(
+                SELLER_CENTRAL_URL + "/coupons/api/getCouponPromotions",
+                params={"paginationSize": 1, "paginationSkip": 0, "clientId": "LegacyCouponsUI"},
+                headers={
+                    **HEADERS,
+                    "Referer": SELLER_CENTRAL_URL + "/coupons",
+                    "X-Requested-With": "XMLHttpRequest",
+                    "Accept": "application/json, text/plain, */*",
+                },
+                timeout=20,
+            )
+            ctype = api_resp.headers.get("Content-Type", "")
+            logger.info(
+                f"DEBUG coupon API probe: {api_resp.status_code} {api_resp.url[:120]} | "
+                f"content-type={ctype} | body[:200]={api_resp.text[:200]!r}"
+            )
+        except Exception as e:
+            logger.info(f"DEBUG coupon API probe failed: {e}")
         if "signin" in resp.url or "ap/signin" in resp.url:
             logger.warning("Session invalid — redirected to login page.")
             return False
