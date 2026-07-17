@@ -103,6 +103,15 @@ def _is_session_valid(session: requests.Session) -> bool:
             allow_redirects=True,
             timeout=15,
         )
+        # DEBUG: full redirect chain so we can see where Amazon sends us
+        for h in resp.history:
+            logger.info(f"DEBUG redirect: {h.status_code} {h.url} -> {h.headers.get('Location', '')}")
+        logger.info(f"DEBUG final: {resp.status_code} {resp.url} | body_len={len(resp.text)}")
+        title_start = resp.text.find("<title>")
+        if title_start != -1:
+            logger.info(f"DEBUG title: {resp.text[title_start:title_start + 120]!r}")
+        cookie_names = sorted(session.cookies.keys())
+        logger.info(f"DEBUG cookie names sent: {cookie_names}")
         if "signin" in resp.url or "ap/signin" in resp.url:
             logger.warning("Session invalid — redirected to login page.")
             return False
